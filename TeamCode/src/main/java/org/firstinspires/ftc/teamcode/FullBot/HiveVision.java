@@ -46,14 +46,25 @@ public class HiveVision {
     private double lastTagHeight = Double.NaN;
     private int lastTagCount = 0;
 
+    /** Starts the camera if "Webcam 1" is configured. Without it, vision is simply off (no target from tags). */
     public void init(HardwareMap hw) {
-        aprilTag = new AprilTagProcessor.Builder().build(); // default library = this season's tags with sizes
-        aprilTag.setDecimation(2);
-        portal = new VisionPortal.Builder()
-                .setCamera(hw.get(WebcamName.class, "Webcam 1"))
-                .addProcessor(aprilTag)
-                .build();
+        WebcamName cam = Hw.opt(hw, WebcamName.class, "Webcam 1");
+        if (cam == null) return;
+        try {
+            aprilTag = new AprilTagProcessor.Builder().build(); // default library = this season's tags with sizes
+            aprilTag.setDecimation(2);
+            portal = new VisionPortal.Builder()
+                    .setCamera(cam)
+                    .addProcessor(aprilTag)
+                    .build();
+        } catch (RuntimeException e) {
+            aprilTag = null;
+            portal = null;
+        }
     }
+
+    /** True if a camera is configured and the vision pipeline started. */
+    public boolean enabled() { return portal != null && aprilTag != null; }
 
     public void setRedAlliance(boolean red) {
         if (red != redAlliance) clearTarget();
@@ -79,7 +90,12 @@ public class HiveVision {
 
     /** Call once per loop, after Drivetrain.update(). */
     public void update(Drivetrain drive) {
-        trySetExposure();
+        if (!enabled()) return;
+        try {
+            trySetExposure();
+        } catch (RuntimeException ignored) {
+            exposureSet = true; // camera doesn't support manual exposure: don't keep trying
+        }
 
         double pitch = Math.toRadians(RobotConfig.CAMERA_PITCH_UP_DEG);
         double yaw = Math.toRadians(RobotConfig.CAMERA_YAW_DEG);
@@ -167,13 +183,18 @@ public class HiveVision {
                 lastTagCount, sinceSeen.seconds());
     }
 
-    public String seenIds() { return seenIds.isEmpty() ? "-" : seenIds; }
+    public String seenIds() {
+        if (!enabled()) return "no webcam";
+        return seenIds.isEmpty() ? "-" : seenIds;
+    }
 
     /** Measured height of the chosen CELL's tags. Use it to check CAMERA_PITCH / HEIGHT and UP_CELL_MIN_TAG_HEIGHT. */
     public double lastTagHeight() { return lastTagHeight; }
 
     public void close() {
-        if (portal != null) portal.close();
+        if (portal != null) {
+            try { portal.close(); } catch (RuntimeException ignored) {}
+        }
     }
 
     private static int cellOf(int id) {

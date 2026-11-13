@@ -39,39 +39,42 @@ public class Drivetrain {
     private int histHead = 0, histCount = 0;
 
     public Drivetrain(HardwareMap hw) {
-        fl = hw.get(DcMotorEx.class, "Front_Left");
-        fr = hw.get(DcMotorEx.class, "Front_Right");
-        rl = hw.get(DcMotorEx.class, "Rear_Left");
-        rr = hw.get(DcMotorEx.class, "Rear_Right");
+        fl = Hw.opt(hw, DcMotorEx.class, "Front_Left");
+        fr = Hw.opt(hw, DcMotorEx.class, "Front_Right");
+        rl = Hw.opt(hw, DcMotorEx.class, "Rear_Left");
+        rr = Hw.opt(hw, DcMotorEx.class, "Rear_Right");
         motors = new DcMotorEx[]{fl, fr, rl, rr};
 
         DcMotorSimple.Direction leftDir = RobotConfig.LEFT_DRIVE_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD;
         DcMotorSimple.Direction rightDir = RobotConfig.RIGHT_DRIVE_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD;
-        fl.setDirection(leftDir);
-        rl.setDirection(leftDir);
-        fr.setDirection(rightDir);
-        rr.setDirection(rightDir);
+        if (fl != null) fl.setDirection(leftDir);
+        if (rl != null) rl.setDirection(leftDir);
+        if (fr != null) fr.setDirection(rightDir);
+        if (rr != null) rr.setDirection(rightDir);
         for (DcMotorEx m : motors) {
+            if (m == null) continue;
             m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         }
 
-        imu = hw.get(IMU.class, "imu");
-        imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
-                RevHubOrientationOnRobot.LogoFacingDirection.valueOf(RobotConfig.HUB_LOGO_DIRECTION),
-                RevHubOrientationOnRobot.UsbFacingDirection.valueOf(RobotConfig.HUB_USB_DIRECTION))));
-        imu.resetYaw();
+        imu = Hw.opt(hw, IMU.class, "imu");
+        if (imu != null) {
+            imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
+                    RevHubOrientationOnRobot.LogoFacingDirection.valueOf(RobotConfig.HUB_LOGO_DIRECTION),
+                    RevHubOrientationOnRobot.UsbFacingDirection.valueOf(RobotConfig.HUB_USB_DIRECTION))));
+            imu.resetYaw();
+        }
         setPose(new Pose(0, 0, 0));
     }
 
     /** Set where the robot is right now (start of auto, or a heading reset in TeleOp). */
     public void setPose(Pose p) {
-        lastFl = fl.getCurrentPosition();
-        lastFr = fr.getCurrentPosition();
-        lastRl = rl.getCurrentPosition();
-        lastRr = rr.getCurrentPosition();
-        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        lastFl = pos(fl);
+        lastFr = pos(fr);
+        lastRl = pos(rl);
+        lastRr = pos(rr);
+        double yaw = yaw();
         headingOffset = p.heading - yaw;
         lastYaw = yaw;
         x = p.x;
@@ -82,12 +85,12 @@ public class Drivetrain {
 
     /** Call once per loop, after the bulk cache is cleared. */
     public void update() {
-        int pFl = fl.getCurrentPosition(), pFr = fr.getCurrentPosition();
-        int pRl = rl.getCurrentPosition(), pRr = rr.getCurrentPosition();
+        int pFl = pos(fl), pFr = pos(fr);
+        int pRl = pos(rl), pRr = pos(rr);
         double dFl = pFl - lastFl, dFr = pFr - lastFr, dRl = pRl - lastRl, dRr = pRr - lastRr;
         lastFl = pFl; lastFr = pFr; lastRl = pRl; lastRr = pRr;
 
-        double yaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        double yaw = yaw();
         double dYaw = Pose.wrap(yaw - lastYaw);
         lastYaw = yaw;
 
@@ -101,13 +104,13 @@ public class Drivetrain {
         heading = Pose.wrap(yaw + headingOffset);
 
         // Velocity straight from the hub's encoder velocity (bulk read) and the gyro.
-        double vF = (fl.getVelocity() + fr.getVelocity() + rl.getVelocity() + rr.getVelocity()) / 4.0 / RobotConfig.DRIVE_TICKS_PER_INCH;
-        double vL = (-fl.getVelocity() + fr.getVelocity() + rl.getVelocity() - rr.getVelocity()) / 4.0
+        double vF = (vel(fl) + vel(fr) + vel(rl) + vel(rr)) / 4.0 / RobotConfig.DRIVE_TICKS_PER_INCH;
+        double vL = (-vel(fl) + vel(fr) + vel(rl) - vel(rr)) / 4.0
                 / RobotConfig.DRIVE_TICKS_PER_INCH * RobotConfig.STRAFE_MULTIPLIER;
         double c = Math.cos(heading), s = Math.sin(heading);
         vx = vF * c - vL * s;
         vy = vF * s + vL * c;
-        omega = imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate;
+        omega = imu != null ? imu.getRobotAngularVelocity(AngleUnit.RADIANS).zRotationRate : 0;
 
         histT[histHead] = System.nanoTime();
         histX[histHead] = x;
@@ -150,11 +153,18 @@ public class Drivetrain {
         double rlP = forward + left - turnCcw;
         double rrP = forward - left + turnCcw;
         double max = Math.max(1.0, Math.max(Math.max(Math.abs(flP), Math.abs(frP)), Math.max(Math.abs(rlP), Math.abs(rrP))));
-        fl.setPower(flP / max);
-        fr.setPower(frP / max);
-        rl.setPower(rlP / max);
-        rr.setPower(rrP / max);
+        power(fl, flP / max);
+        power(fr, frP / max);
+        power(rl, rlP / max);
+        power(rr, rrP / max);
     }
+
+    // ---- Missing-hardware-safe access: an unconfigured motor reads 0 and ignores power; no IMU = heading stays put ----
+    private static int pos(DcMotorEx m) { return m == null ? 0 : m.getCurrentPosition(); }
+    private static double vel(DcMotorEx m) { return m == null ? 0 : m.getVelocity(); }
+    private static void power(DcMotorEx m, double p) { if (m != null) m.setPower(p); }
+    private double yaw() { return imu == null ? 0 : imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS); }
+    public boolean hasImu() { return imu != null; }
 
     /** Field-centric: xField / yField are powers along the field axes. */
     public void driveField(double xField, double yField, double turnCcw) {

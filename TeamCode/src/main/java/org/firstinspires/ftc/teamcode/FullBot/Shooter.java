@@ -152,6 +152,7 @@ public class Shooter {
         if (mode == Mode.OFF) return "off";
         if (solution == null) return "no target (no tag, no manual distance)";
         if (!solution.valid) return "can't shoot: " + solution.reason;
+        if (!flywheel.present()) return "no launcher motors configured";
         if (!flywheel.ready()) return "spinning up";
         if (!hood.settled()) return "hood moving";
         if (!Double.isNaN(aimHeading) && Math.abs(drive.headingError(aimHeading)) > headingTolerance) return "turning to aim";

@@ -4,7 +4,10 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 /*
- * Launch-angle servo. Converts degrees to servo position using two measured calibration points, and estimates
+ * Launch-angle servo. If HAS_HOOD is false or the "hood" servo isn't configured, this is a fixed launch angle:
+ * every call is a no-op, it always reports settled, and the angle is FIXED_LAUNCH_ANGLE_DEG.
+ *
+ * With a servo: Converts degrees to servo position using two measured calibration points, and estimates
  * where the servo actually is (servos have no feedback) so we never fire while the hood is still moving.
  */
 public class Hood {
@@ -14,7 +17,7 @@ public class Hood {
     private double arrivedFor = 0;
 
     public Hood(HardwareMap hw) {
-        servo = hw.get(Servo.class, "hood");
+        servo = RobotConfig.HAS_HOOD ? Hw.opt(hw, Servo.class, "hood") : null;
         estimatedPos = angleToPosition(RobotConfig.HOOD_MAX_ANGLE_DEG);
     }
 
@@ -30,13 +33,18 @@ public class Hood {
         return RobotConfig.HOOD_CAL_ANGLE_A_DEG + (pos - RobotConfig.HOOD_CAL_POS_A) * slope;
     }
 
+    /** True if a hood servo is configured and in use. */
+    public boolean present() { return servo != null; }
+
     public void setAngleDeg(double angleDeg) {
+        if (servo == null) return;
         angleDeg = Math.max(RobotConfig.HOOD_MIN_ANGLE_DEG, Math.min(RobotConfig.HOOD_MAX_ANGLE_DEG, angleDeg));
         setPosition(angleToPosition(angleDeg));
     }
 
     /** Raw servo position, used for calibration. */
     public void setPosition(double pos) {
+        if (servo == null) return;
         pos = Math.max(0, Math.min(1, pos));
         // Skip tiny changes: they don't move the servo but would reset the settle timer.
         if (Double.isNaN(commandedPos) || Math.abs(pos - commandedPos) > 0.0005) {
@@ -60,13 +68,17 @@ public class Hood {
     }
 
     public boolean settled() {
+        if (servo == null) return true;
         return !Double.isNaN(commandedPos) && arrivedFor >= RobotConfig.HOOD_SETTLE_SEC;
     }
 
     public double position() { return commandedPos; }
 
     /** Best guess of the current actual angle. */
-    public double angleDeg() { return positionToAngle(estimatedPos); }
+    public double angleDeg() { return servo == null ? RobotConfig.FIXED_LAUNCH_ANGLE_DEG : positionToAngle(estimatedPos); }
 
-    public double targetAngleDeg() { return Double.isNaN(commandedPos) ? Double.NaN : positionToAngle(commandedPos); }
+    public double targetAngleDeg() {
+        if (servo == null) return RobotConfig.FIXED_LAUNCH_ANGLE_DEG;
+        return Double.isNaN(commandedPos) ? Double.NaN : positionToAngle(commandedPos);
+    }
 }

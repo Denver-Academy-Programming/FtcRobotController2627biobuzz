@@ -81,14 +81,15 @@ public final class ShotSolver {
     private volatile boolean building;
 
     public ShotSolver() {
-        this(RobotConfig.BALL_DRAG_CD);
+        this(RobotConfig.BALL_DRAG_CD, RobotConfig.HAS_HOOD);
     }
 
-    public ShotSolver(double dragCd) {
+    /** adjustableHood = false: only FIXED_LAUNCH_ANGLE_DEG is considered, the solver only picks exit speed. */
+    public ShotSolver(double dragCd, boolean adjustableHood) {
         dh = RobotConfig.HIVE_TARGET_HEIGHT_IN - RobotConfig.LAUNCHER_EXIT_HEIGHT_IN;
         k = dragK(dragCd);
-        minAngle = RobotConfig.HOOD_MIN_ANGLE_DEG;
-        maxAngle = RobotConfig.HOOD_MAX_ANGLE_DEG;
+        minAngle = adjustableHood ? RobotConfig.HOOD_MIN_ANGLE_DEG : RobotConfig.FIXED_LAUNCH_ANGLE_DEG;
+        maxAngle = adjustableHood ? RobotConfig.HOOD_MAX_ANGLE_DEG : RobotConfig.FIXED_LAUNCH_ANGLE_DEG;
         maxEntry = RobotConfig.MAX_ENTRY_ANGLE_DEG;
         // Build with a generous ceiling; the real (efficiency-dependent) limit is checked at query time.
         vMax = ticksToExitSpeed(RobotConfig.LAUNCHER_MAX_TICKS_PER_SEC, Math.min(1.0, RobotConfig.LAUNCH_EFFICIENCY * 1.3));

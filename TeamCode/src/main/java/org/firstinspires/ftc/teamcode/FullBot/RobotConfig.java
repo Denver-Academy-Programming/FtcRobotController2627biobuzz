@@ -9,10 +9,12 @@ package org.firstinspires.ftc.teamcode.biobuzz;
  * Field frame:  odometry frame set at the start of AUTO (+x = robot forward at start, +y = robot left at start).
  *
  * Driver Station configuration names:
- *   Motors:  Front_Left, Front_Right, Rear_Left, Rear_Right, intake, launcher_left, launcher_right
- *   Servo:   hood          (sets the launch angle)
+ *   Motors:  Front_Left, Front_Right, Rear_Left, Rear_Right, launcher_left, launcher_right
+ *   intake:  DC motor OR Continuous Rotation Servo (roller intake + feeder), either works
+ *   Servo:   hood          (sets the launch angle; only used when HAS_HOOD = true)
  *   Webcam:  Webcam 1
  *   IMU:     imu           (Control Hub built-in)
+ * Every device is optional: anything missing from the configuration is skipped and listed as "Missing" in telemetry.
  *
  * Fields that are "public static" (not final) can be changed live by the tuning OpMode; copy the tuned values back here.
  *
@@ -36,6 +38,9 @@ public final class RobotConfig {
     // [PLACEHOLDER] TUNE: flip these if pushing the stick forward doesn't drive forward.
     public static final boolean LEFT_DRIVE_REVERSED = true;
     public static final boolean RIGHT_DRIVE_REVERSED = false;
+    // TeleOp only: flips which end of the robot the left stick treats as "front" (forward/back AND left/right).
+    // Set true because trials showed stick-forward drove backward and stick-left strafed right. Turning is unaffected.
+    public static boolean TELEOP_DRIVE_INVERTED = true;
 
     // [PLACEHOLDER] MEASURE: Control Hub mounting (see ConceptExploringIMUOrientation if unsure).
     public static final String HUB_LOGO_DIRECTION = "UP";        // UP, DOWN, LEFT, RIGHT, FORWARD, BACKWARD
@@ -77,7 +82,13 @@ public final class RobotConfig {
     public static final boolean LAUNCHER_LEFT_REVERSED = false;
     public static final boolean LAUNCHER_RIGHT_REVERSED = true;
 
-    // Hood servo. Calibrate with ShooterTuner "raw servo" mode + a phone inclinometer app:
+    // Adjustable hood? false = launch angle is fixed at FIXED_LAUNCH_ANGLE_DEG and the solver only picks flywheel speed.
+    public static final boolean HAS_HOOD = false;
+    // [PLACEHOLDER] MEASURE (phone inclinometer on the exit ramp): launch angle above horizontal with no hood.
+    // Steeper = can shoot from closer, but needs more speed far away.
+    public static double FIXED_LAUNCH_ANGLE_DEG = 50.0;
+
+    // Hood servo (only when HAS_HOOD). Calibrate with ShooterTuner "raw servo" mode + a phone inclinometer app:
     // put the servo at two positions, measure the actual exit angle at each, enter them here.
     // [PLACEHOLDER] MEASURE: the two calibration points.
     public static double HOOD_CAL_POS_A = 0.20, HOOD_CAL_ANGLE_A_DEG = 30.0;
@@ -105,14 +116,13 @@ public final class RobotConfig {
     public static double FLY_VELOCITY_FILTER = 0.5;    // 0..1, higher = less filtering
 
     // =====================================================================================
-    // INTAKE / FEED  (intake motor also pushes POLLEN into the flywheel)
+    // INTAKE / FEED  (intake also pushes POLLEN into the flywheel)
     // =====================================================================================
     public static double INTAKE_POWER = 1.0;
     public static double FEED_POWER = 0.8;             // [PLACEHOLDER] TUNE: slow enough that balls don't double-feed
     public static double MIN_SHOT_SPACING_SEC = 0.12;  // after a shot is detected, stop feeding at least this long
-    public static double INTAKE_JAM_CURRENT_A = 6.5;   // [PLACEHOLDER] TUNE: read "Intake" amps telemetry when stalled
-    public static double INTAKE_JAM_TIME_SEC = 0.30;
-    public static double INTAKE_UNJAM_TIME_SEC = 0.20;
+    // [PLACEHOLDER] TUNE: flip if the intake spins outward when pulling the right trigger.
+    public static final boolean INTAKE_REVERSED = false;
 
     // =====================================================================================
     // BALL + HIVE  (projectile model)

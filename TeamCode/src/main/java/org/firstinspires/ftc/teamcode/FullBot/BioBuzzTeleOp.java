@@ -81,8 +81,10 @@ public class BioBuzzTeleOp extends OpMode {
         robot.shooter.setMode(mode);
         robot.shooter.setManualDistance(PRESETS[preset]);
 
-        robot.setIntake(Math.max(gamepad1.right_trigger, gamepad2.right_trigger) * RobotConfig.INTAKE_POWER
-                - Math.max(gamepad1.left_trigger, gamepad2.left_trigger));
+        // Triggers are on/off: any real press runs the intake at full power (a half-pulled trigger used to mean half speed).
+        double inTrig = Math.max(gamepad1.right_trigger, gamepad2.right_trigger);
+        double outTrig = Math.max(gamepad1.left_trigger, gamepad2.left_trigger);
+        robot.setIntake(inTrig > 0.1 ? RobotConfig.INTAKE_POWER : outTrig > 0.1 ? -RobotConfig.INTAKE_POWER : 0);
 
         robot.update();
 
@@ -90,6 +92,7 @@ public class BioBuzzTeleOp extends OpMode {
         double scale = gamepad1.left_bumper ? SLOW_SCALE : 1.0;
         double fwd = dz(-gamepad1.left_stick_y) * scale;
         double left = dz(-gamepad1.left_stick_x) * scale;
+        if (RobotConfig.TELEOP_DRIVE_INVERTED) { fwd = -fwd; left = -left; }
         double turn = dz(-gamepad1.right_stick_x) * scale;   // stick right = turn clockwise
 
         double aimTurn = aim ? robot.shooter.aimTurnPower(robot.drive) : Double.NaN;
@@ -112,7 +115,7 @@ public class BioBuzzTeleOp extends OpMode {
         telemetry.addData("Mode", "%s   shots this volley %d", mode, robot.shooter.shotsThisVolley());
         telemetry.addData("Fallback distance (dpad L/R)", Double.isNaN(PRESETS[preset]) ? "off" : String.format("%.0f in", PRESETS[preset]));
         telemetry.addData("Efficiency (dpad U/D)", "%.3f", RobotConfig.LAUNCH_EFFICIENCY);
-        telemetry.addData("Intake", robot.intake.unjamming() ? "UNJAMMING" : String.format("%.1f A", robot.intake.currentAmps()));
+        telemetry.addData("Intake", robot.intake.present() ? String.format("%s  %.2f", robot.intake.kind(), robot.intake.power()) : "not configured");
         robot.addTelemetry(telemetry);
     }
 

@@ -31,11 +31,12 @@ public class Flywheel {
     private double lastRecoverySec = Double.NaN;
 
     public Flywheel(HardwareMap hw) {
-        left = hw.get(DcMotorEx.class, "launcher_left");
-        right = hw.get(DcMotorEx.class, "launcher_right");
-        left.setDirection(RobotConfig.LAUNCHER_LEFT_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        right.setDirection(RobotConfig.LAUNCHER_RIGHT_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        left = Hw.opt(hw, DcMotorEx.class, "launcher_left");
+        right = Hw.opt(hw, DcMotorEx.class, "launcher_right");
+        if (left != null) left.setDirection(RobotConfig.LAUNCHER_LEFT_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        if (right != null) right.setDirection(RobotConfig.LAUNCHER_RIGHT_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         for (DcMotorEx m : new DcMotorEx[]{left, right}) {
+            if (m == null) continue;
             m.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
             m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER); // our own loop; encoder still reads
             m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT); // coast, don't brake a heavy flywheel
@@ -52,8 +53,11 @@ public class Flywheel {
     /** Call every loop (after bulk cache clear). */
     public void update(double dt, double batteryVolts) {
         double a = RobotConfig.FLY_VELOCITY_FILTER;
-        velL += a * (left.getVelocity() - velL);
-        velR += a * (right.getVelocity() - velR);
+        // Only one side configured: use it for both, so a single-motor launcher still works.
+        DcMotorEx l = left != null ? left : right, r = right != null ? right : left;
+        if (l == null) { velL = velR = 0; stableFor = 0; return; }   // no launcher at all
+        velL += a * (l.getVelocity() - velL);
+        velR += a * (r.getVelocity() - velR);
 
         if (target <= 0) {
             powerL = powerR = 0;
@@ -61,8 +65,8 @@ public class Flywheel {
             powerL = sidePower(velL, batteryVolts);
             powerR = sidePower(velR, batteryVolts);
         }
-        left.setPower(powerL);
-        right.setPower(powerR);
+        if (left != null) left.setPower(powerL);
+        if (right != null) right.setPower(powerR);
 
         // Ready / shot detection
         boolean inBand = target > 0
@@ -92,6 +96,8 @@ public class Flywheel {
         return Math.max(0, Math.min(1, ff + RobotConfig.FLY_KP * err));
     }
 
+    public boolean present() { return left != null || right != null; }
+
     public boolean ready() { return stableFor >= RobotConfig.FLY_READY_STABLE_SEC; }
 
     /** Total balls detected leaving the launcher. */
@@ -106,7 +112,7 @@ public class Flywheel {
 
     public void stop() {
         target = 0;
-        left.setPower(0);
-        right.setPower(0);
+        if (left != null) left.setPower(0);
+        if (right != null) right.setPower(0);
     }
 }

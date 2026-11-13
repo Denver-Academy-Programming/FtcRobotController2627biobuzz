@@ -1,60 +1,60 @@
 package org.firstinspires.ftc.teamcode.biobuzz;
 
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
-
-import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
+import com.qualcomm.robotcore.hardware.PwmControl;
 
 /*
- * Intake rollers. Also the feeder: running it pushes POLLEN from the hopper into the flywheel.
- * Detects jams by motor current and briefly reverses to clear them.
+ * Intake rollers, named "intake" in the Driver Hub configuration. Works with EITHER:
+ *   - a DC motor              (Motors -> any motor type), or
+ *   - a continuous rotation servo  (Servos -> "Continuous Rotation Servo").
+ * Both are a DcMotorSimple, so the same setPower(-1..1) drives either one.
+ * Also the feeder: running it pushes POLLEN from the hopper into the flywheel.
+ * Positive pulls in, negative spits out. If it spins the wrong way, flip INTAKE_REVERSED.
+ * Not configured -> does nothing.
  */
 public class Intake {
-    private final DcMotorEx motor;
-    private double requested = 0;
-    private double highCurrentFor = 0;
-    private double unjamLeft = 0;
-    private double currentA = 0;
+    private final DcMotorSimple actuator;
+    private double power = 0;
 
     public Intake(HardwareMap hw) {
-        motor = hw.get(DcMotorEx.class, "intake");
-        motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
-        motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE); // stop the next ball instantly between shots
+        actuator = Hw.opt(hw, DcMotorSimple.class, "intake");
+        if (actuator == null) return;
+        actuator.setDirection(RobotConfig.INTAKE_REVERSED ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        if (actuator instanceof DcMotor) {
+            DcMotor m = (DcMotor) actuator;
+            m.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+            m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE); // stop the next ball instantly between shots
+        }
+        if (actuator instanceof PwmControl) {
+            // SDK default pulse range is 600-2400us; most CR servos (goBILDA, REV Smart Servo) accept 500-2500us,
+            // so the wider range lets power 1.0 reach the servo's true top speed.
+            ((PwmControl) actuator).setPwmRange(new PwmControl.PwmRange(500, 2500));
+        }
     }
 
     /** Positive = pull in / feed, negative = spit out. */
-    public void set(double power) {
-        requested = Math.max(-1, Math.min(1, power));
+    public void set(double p) {
+        power = Math.max(-1, Math.min(1, p));
     }
 
     public void update(double dt) {
-        // Current isn't in the bulk read, so only pay for the read while pulling in.
-        if (requested > 0.3 && unjamLeft <= 0) {
-            currentA = motor.getCurrent(CurrentUnit.AMPS);
-            highCurrentFor = currentA > RobotConfig.INTAKE_JAM_CURRENT_A ? highCurrentFor + dt : 0;
-            if (highCurrentFor > RobotConfig.INTAKE_JAM_TIME_SEC) {
-                unjamLeft = RobotConfig.INTAKE_UNJAM_TIME_SEC;
-                highCurrentFor = 0;
-            }
-        } else {
-            highCurrentFor = 0;
-        }
-
-        if (unjamLeft > 0) {
-            unjamLeft -= dt;
-            motor.setPower(-0.6);
-        } else {
-            motor.setPower(requested);
-        }
+        if (actuator != null) actuator.setPower(power);
     }
 
-    public boolean unjamming() { return unjamLeft > 0; }
-    public double currentAmps() { return currentA; }
+    public boolean present() { return actuator != null; }
+
+    /** "motor", "servo" or "not configured", for telemetry. */
+    public String kind() {
+        if (actuator == null) return "not configured";
+        return actuator instanceof DcMotor ? "motor" : "servo";
+    }
+
+    public double power() { return power; }
 
     public void stop() {
-        requested = 0;
-        unjamLeft = 0;
-        motor.setPower(0);
+        power = 0;
+        if (actuator != null) actuator.setPower(0);
     }
 }

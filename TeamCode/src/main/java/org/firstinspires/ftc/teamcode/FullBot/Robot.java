@@ -37,9 +37,10 @@ public class Robot {
     private double intakeRequest = 0;
 
     public Robot(HardwareMap hw) {
+        Hw.reset();
         hubs = hw.getAll(LynxModule.class);
         for (LynxModule hub : hubs) hub.setBulkCachingMode(LynxModule.BulkCachingMode.MANUAL);
-        battery = hw.voltageSensor.iterator().next();
+        battery = hw.voltageSensor.iterator().hasNext() ? hw.voltageSensor.iterator().next() : null;
 
         drive = new Drivetrain(hw);
         flywheel = new Flywheel(hw);
@@ -47,10 +48,16 @@ public class Robot {
         intake = new Intake(hw);
         vision = new HiveVision();
         vision.init(hw);
-        solver = new ShotSolver();
+        solver = new ShotSolver(RobotConfig.BALL_DRAG_CD, hood.present());
         solver.buildTableAsync();
         shooter = new Shooter(flywheel, hood, vision, solver);
-        volts = battery.getVoltage();
+        volts = readVolts();
+    }
+
+    private double readVolts() {
+        if (battery == null) return 12.5;
+        double v = battery.getVoltage();
+        return v > 1 ? v : 12.5;   // 0 when the hub isn't reporting: assume a normal battery
     }
 
     /** Driver / auto intake request; the shooter overrides it while feeding. */
@@ -66,7 +73,7 @@ public class Robot {
         // The voltage read isn't part of the bulk read, so only refresh it a few times a second.
         voltTimer += dt;
         if (voltTimer > 0.25) {
-            volts += 0.5 * (battery.getVoltage() - volts);
+            volts += 0.5 * (readVolts() - volts);
             voltTimer = 0;
         }
 
@@ -93,6 +100,8 @@ public class Robot {
 
     public void addTelemetry(Telemetry t) {
         ShotSolver.Solution s = shooter.solution();
+        String missing = Hw.missing();
+        if (!missing.isEmpty()) t.addData("Missing (skipped)", missing);
         t.addData("Shooter", shooter.status(drive));
         t.addData("Target", vision.targetName());
         t.addData("Tags seen", "%s   (tag height %.1f in)", vision.seenIds(), vision.lastTagHeight());
@@ -107,7 +116,8 @@ public class Robot {
         t.addData("Flywheel", "L %.0f  R %.0f  / %.0f  %s  (recovery %.2fs)",
                 flywheel.velocityLeft(), flywheel.velocityRight(), flywheel.target(),
                 flywheel.ready() ? "AT SPEED" : "", flywheel.lastRecoverySec());
-        t.addData("Hood", "%.1f° -> %.1f° %s", hood.angleDeg(), hood.targetAngleDeg(), hood.settled() ? "" : "moving");
+        if (hood.present()) t.addData("Hood", "%.1f° -> %.1f° %s", hood.angleDeg(), hood.targetAngleDeg(), hood.settled() ? "" : "moving");
+        else t.addData("Launch angle", "%.1f° (fixed, no hood)", hood.angleDeg());
         t.addData("Pose", drive.pose().toString());
         t.addData("Battery / loop", "%.2f V   %.0f ms %s", volts, dt * 1000, solver.tableReady() ? "" : "(solver table building)");
     }
