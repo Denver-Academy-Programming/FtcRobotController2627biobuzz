@@ -7,7 +7,8 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
  * BIOBUZZ driver control.
  *
  * GAMEPAD 1 (driver)
- *   Left stick          drive (field-centric by default)       Right stick X   turn
+ *   Left stick          drive (robot-centric by default: up = toward the intake)   Right stick X   turn
+ *   Dpad                slow, precise drive (robot-centric, DPAD_DRIVE_POWER)
  *   Left bumper (hold)  slow mode                              X               toggle field-centric / robot-centric
  *   Back                reset field-centric "forward" to where the robot faces now
  *   Right trigger       intake         Left trigger   spit out
@@ -16,9 +17,9 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
  *                       for robot motion (shoot on the move).
  *   A (hold)            aim + spin up only (no feeding)
  *   Y                   toggle flywheel pre-spin          B   launcher off
+ * GAMEPAD 2 (operator, optional): right bumper shoot, A aim, Y pre-spin, B off, triggers intake.
  *   Dpad up/down        launch efficiency trim (shots short -> up, long -> down)
  *   Dpad left/right     fallback distance when no tag is known (off / 48 / 72 / 96 / 120 / 144 in)
- * GAMEPAD 2 (operator, optional): right bumper shoot, A aim, Y pre-spin, B off, triggers intake.
  * INIT: X toggles alliance (defaults to what AUTO used).
  *
  * Rumble = shooter just became READY.
@@ -31,7 +32,7 @@ public class BioBuzzTeleOp extends OpMode {
     private static final double[] PRESETS = {Double.NaN, 48, 72, 96, 120, 144};
 
     private Robot robot;
-    private boolean fieldCentric = true;
+    private boolean fieldCentric = false; // field-centric rotated the controls when the robot wasn't facing 'forward' at INIT
     private double driverForwardHeading = 0;
     private boolean preSpin = false;
     private int preset = 0;
@@ -66,12 +67,12 @@ public class BioBuzzTeleOp extends OpMode {
         if (pressed(gamepad1.x, prevX1)) fieldCentric = !fieldCentric;
         if (pressed(gamepad1.y || gamepad2.y, prevY)) preSpin = !preSpin;
         if (gamepad1.b || gamepad2.b) preSpin = false;
-        if (pressed(gamepad1.dpad_up, prevUp)) RobotConfig.LAUNCH_EFFICIENCY = Math.min(1.0, RobotConfig.LAUNCH_EFFICIENCY + 0.005);
-        if (pressed(gamepad1.dpad_down, prevDown)) RobotConfig.LAUNCH_EFFICIENCY = Math.max(0.1, RobotConfig.LAUNCH_EFFICIENCY - 0.005);
-        if (pressed(gamepad1.dpad_right, prevRight)) preset = (preset + 1) % PRESETS.length;
-        if (pressed(gamepad1.dpad_left, prevLeft)) preset = (preset + PRESETS.length - 1) % PRESETS.length;
+        if (pressed(gamepad2.dpad_up, prevUp)) RobotConfig.LAUNCH_EFFICIENCY = Math.min(1.0, RobotConfig.LAUNCH_EFFICIENCY + 0.005);
+        if (pressed(gamepad2.dpad_down, prevDown)) RobotConfig.LAUNCH_EFFICIENCY = Math.max(0.1, RobotConfig.LAUNCH_EFFICIENCY - 0.005);
+        if (pressed(gamepad2.dpad_right, prevRight)) preset = (preset + 1) % PRESETS.length;
+        if (pressed(gamepad2.dpad_left, prevLeft)) preset = (preset + PRESETS.length - 1) % PRESETS.length;
         prevBack = gamepad1.back; prevX1 = gamepad1.x; prevY = gamepad1.y || gamepad2.y;
-        prevUp = gamepad1.dpad_up; prevDown = gamepad1.dpad_down; prevLeft = gamepad1.dpad_left; prevRight = gamepad1.dpad_right;
+        prevUp = gamepad2.dpad_up; prevDown = gamepad2.dpad_down; prevLeft = gamepad2.dpad_left; prevRight = gamepad2.dpad_right;
 
         boolean fire = gamepad1.right_bumper || gamepad2.right_bumper;
         boolean aim = fire || gamepad1.a || gamepad2.a;
@@ -98,7 +99,15 @@ public class BioBuzzTeleOp extends OpMode {
         double aimTurn = aim ? robot.shooter.aimTurnPower(robot.drive) : Double.NaN;
         if (!Double.isNaN(aimTurn)) turn = aimTurn;
 
-        if (fieldCentric) {
+        // Dpad = slow nudge, always robot-centric (up = toward the intake). Overrides the stick while held.
+        boolean dpad = gamepad1.dpad_up || gamepad1.dpad_down || gamepad1.dpad_left || gamepad1.dpad_right;
+        if (dpad) {
+            double p = RobotConfig.DPAD_DRIVE_POWER;
+            double dFwd = (gamepad1.dpad_up ? p : 0) - (gamepad1.dpad_down ? p : 0);
+            double dLeft = (gamepad1.dpad_left ? p : 0) - (gamepad1.dpad_right ? p : 0);
+            if (RobotConfig.TELEOP_DRIVE_INVERTED) { dFwd = -dFwd; dLeft = -dLeft; }
+            robot.drive.drive(dFwd, dLeft, turn);
+        } else if (fieldCentric) {
             // Rotate driver-frame stick into the field frame.
             double c = Math.cos(driverForwardHeading), s = Math.sin(driverForwardHeading);
             robot.drive.driveField(fwd * c - left * s, fwd * s + left * c, turn);
@@ -113,8 +122,8 @@ public class BioBuzzTeleOp extends OpMode {
         // ---------------- Telemetry ----------------
         telemetry.addData("Drive", "%s%s", fieldCentric ? "field-centric" : "robot-centric", gamepad1.left_bumper ? "  SLOW" : "");
         telemetry.addData("Mode", "%s   shots this volley %d", mode, robot.shooter.shotsThisVolley());
-        telemetry.addData("Fallback distance (dpad L/R)", Double.isNaN(PRESETS[preset]) ? "off" : String.format("%.0f in", PRESETS[preset]));
-        telemetry.addData("Efficiency (dpad U/D)", "%.3f", RobotConfig.LAUNCH_EFFICIENCY);
+        telemetry.addData("Fallback distance (gp2 dpad L/R)", Double.isNaN(PRESETS[preset]) ? "off" : String.format("%.0f in", PRESETS[preset]));
+        telemetry.addData("Efficiency (gp2 dpad U/D)", "%.3f", RobotConfig.LAUNCH_EFFICIENCY);
         telemetry.addData("Intake", robot.intake.present() ? String.format("%s  %.2f", robot.intake.kind(), robot.intake.power()) : "not configured");
         robot.addTelemetry(telemetry);
     }

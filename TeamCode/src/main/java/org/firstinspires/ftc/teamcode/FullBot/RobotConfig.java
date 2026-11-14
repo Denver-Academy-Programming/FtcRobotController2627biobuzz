@@ -39,8 +39,10 @@ public final class RobotConfig {
     public static final boolean LEFT_DRIVE_REVERSED = true;
     public static final boolean RIGHT_DRIVE_REVERSED = false;
     // TeleOp only: flips which end of the robot the left stick treats as "front" (forward/back AND left/right).
-    // Set true because trials showed stick-forward drove backward and stick-left strafed right. Turning is unaffected.
+    // true = stick-up drives the robot the way the drivers want (confirmed on the robot 2026-11-13 in robot-centric mode;
+    // with false, up/down and left/right were swapped). Flip back if the drivetrain gets rewired.
     public static boolean TELEOP_DRIVE_INVERTED = true;
+    public static double DPAD_DRIVE_POWER = 0.25;     // TeleOp dpad nudge speed (0..1)
 
     // [PLACEHOLDER] MEASURE: Control Hub mounting (see ConceptExploringIMUOrientation if unsure).
     public static final String HUB_LOGO_DIRECTION = "UP";        // UP, DOWN, LEFT, RIGHT, FORWARD, BACKWARD
@@ -119,7 +121,7 @@ public final class RobotConfig {
     // INTAKE / FEED  (intake also pushes POLLEN into the flywheel)
     // =====================================================================================
     public static double INTAKE_POWER = 1.0;
-    public static double FEED_POWER = 0.8;             // [PLACEHOLDER] TUNE: slow enough that balls don't double-feed
+    public static double FEED_POWER = 1.0;             // intake is a slow CR servo, so feed flat out; lower if balls double-feed
     public static double MIN_SHOT_SPACING_SEC = 0.12;  // after a shot is detected, stop feeding at least this long
     // [PLACEHOLDER] TUNE: flip if the intake spins outward when pulling the right trigger.
     public static final boolean INTAKE_REVERSED = false;
