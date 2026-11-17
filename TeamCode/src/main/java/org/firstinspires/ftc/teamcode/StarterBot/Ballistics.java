@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode.StarterBot;
 /*
  * Projectile-motion shot solver for the StarterBot launcher.
  *
+ * NOT USED right now: the StarterBot has no webcam, so there is no distance to feed it. Kept for when one is added.
+ *
  * The launcher has a fixed hood angle, so the only thing we can change is how fast POLLEN leaves the flywheel.
  * Given the horizontal distance d to the HIVE opening and its height above the launcher exit (dh), the
  * no-air-resistance projectile equations are:

@@ -24,31 +24,27 @@ package org.firstinspires.ftc.teamcode.StarterBot;
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.util.ElapsedTime;
 
 /*
- * Driver-controlled OpMode for the goBILDA BIOBUZZ StarterBot (mecanum).
+ * Driver-controlled OpMode for the goBILDA BIOBUZZ StarterBot (2 rear drive motors, no webcam).
  *
  * CONTROLS (gamepad1 = driver, gamepad2 = optional operator; mechanism buttons work on either)
- *   Left stick          Drive forward/back + strafe
+ *   Left stick Y        Drive forward / back
  *   Right stick X       Turn
  *   Left bumper (hold)  Slow mode for lining up with the HIVE / FLOWER
  *
  *   Right trigger       Intake POLLEN (proportional)
  *   Left trigger        Reverse intake / spit out (proportional)
  *
- *   Y                   Toggle launcher flywheel spin-up on/off (pre-spin while driving to the HIVE)
- *   Right bumper (hold) SHOOT: auto-aims at the HIVE, sets flywheel speed from distance, feeds once
- *                       aimed and at speed. With no HIVE tag in view it shoots at the old fixed speed.
- *   A (hold, gamepad1)  Auto-aim only: turns to face the HIVE while you keep driving with the left stick
- *   B                   Stop the launcher
- *   X (hold)            Run windmill feeder backwards to clear a jam
+ *   Y                   Launcher on / off (pre-spin while driving to the HIVE)
+ *   B                   Launcher off
+ *   Right bumper (hold) SHOOT: turns the launcher on if needed, feeds once it has spun up
+ *   X (hold)            Windmill feeder backwards to clear a jam
  *
- *   X during INIT (gamepad1) Choose alliance (which HIVE tags to aim at)
- *   Dpad up/down (gamepad1)  Calibrate launch efficiency +/- 0.01 (shots short -> down, long -> up).
- *                            Copy the final value into Ballistics.DEFAULT_LAUNCH_EFFICIENCY.
- *
- * AprilTag aiming: the webcam finds our alliance's raised CELL by the tags under it, AimVision turns that into distance + heading error,
- * and Ballistics uses projectile motion to pick the flywheel speed for that distance.
+ *   Dpad up / down      Launcher power +/- 0.01   (shots long -> down, short -> up)
+ *   Dpad right / left   Launcher power +/- 0.05
+ *                       Copy the final value into StarterBotHardware.LAUNCHER_DEFAULT_POWER (auto uses it too).
  */
 @TeleOp(name = "StarterBot TeleOp", group = "StarterBot")
 public class StarterBotTeleOp extends OpMode {
@@ -57,66 +53,47 @@ public class StarterBotTeleOp extends OpMode {
     private static final double STICK_DEADZONE = 0.05;
 
     private final StarterBotHardware robot = new StarterBotHardware();
-    private final AimVision vision = new AimVision();
+    private final ElapsedTime launcherTimer = new ElapsedTime(); // time since the launcher was turned on
     private boolean launcherOn = false;
-    private double efficiency = Ballistics.DEFAULT_LAUNCH_EFFICIENCY;
+    private double launcherPower = StarterBotHardware.LAUNCHER_DEFAULT_POWER;
 
     @Override
     public void init() {
         robot.init(hardwareMap);
-        vision.init(hardwareMap);
-        telemetry.addData("Status", "Initialized - check config names if anything is missing");
     }
 
     @Override
     public void init_loop() {
-        if (gamepad1.xWasPressed()) vision.setRedAlliance(!vision.isRedAlliance());
-        vision.update();
-        telemetry.addData("Alliance (X)", vision.isRedAlliance() ? "RED" : "BLUE");
-        telemetry.addData("HIVE target", vision.targetName());
-        telemetry.addData("Tags seen", vision.seenIds());
+        String missing = robot.missing();
+        telemetry.addData("Status", missing.isEmpty() ? "Ready" : "Running without some hardware");
+        if (!missing.isEmpty()) telemetry.addData("MISSING (check config names)", missing);
+        telemetry.addData("Battery", "%.1f V", robot.batteryVoltage());
     }
 
     @Override
     public void loop() {
-        // ---------------- Vision + shot solution ----------------
-        vision.update();
-        if (gamepad1.dpadUpWasPressed()) efficiency = Math.min(efficiency + 0.01, 1.0);
-        if (gamepad1.dpadDownWasPressed()) efficiency = Math.max(efficiency - 0.01, 0.05);
-
-        Ballistics.Shot shot = vision.hasTarget() ? Ballistics.solve(vision.distanceIn(), efficiency) : null;
-        boolean aimable = shot != null && shot.valid;
-        boolean aimed = vision.hasTarget() && Math.abs(vision.headingErrorDeg()) <= StarterBotHardware.AIM_TOLERANCE_DEG;
-        boolean shooting = gamepad1.right_bumper || gamepad2.right_bumper;
+        // ---------------- Launcher power tuning ----------------
+        double step = StarterBotHardware.LAUNCHER_POWER_STEP;
+        if (gamepad1.dpadUpWasPressed() || gamepad2.dpadUpWasPressed()) launcherPower += step;
+        if (gamepad1.dpadDownWasPressed() || gamepad2.dpadDownWasPressed()) launcherPower -= step;
+        if (gamepad1.dpadRightWasPressed() || gamepad2.dpadRightWasPressed()) launcherPower += 5 * step;
+        if (gamepad1.dpadLeftWasPressed() || gamepad2.dpadLeftWasPressed()) launcherPower -= 5 * step;
+        launcherPower = StarterBotHardware.clip(launcherPower, 0, StarterBotHardware.LAUNCHER_MAX_POWER);
 
         // ---------------- Drive ----------------
         double forward = deadzone(-gamepad1.left_stick_y); // stick forward is negative
-        double strafe = deadzone(gamepad1.left_stick_x);
         double turn = deadzone(gamepad1.right_stick_x);
-
-        boolean slow = gamepad1.left_bumper;
-        double scale = slow ? SLOW_MODE_SCALE : 1.0;
-        boolean autoAim = (gamepad1.a || shooting) && vision.hasTarget();
-        turn = autoAim ? StarterBotHardware.aimTurnPower(vision.headingErrorDeg()) : turn * scale;
-        robot.drive(forward * scale, strafe * scale, turn);
+        double scale = gamepad1.left_bumper ? SLOW_MODE_SCALE : 1.0;
+        robot.drive(forward * scale, turn * scale);
 
         // ---------------- Launcher ----------------
-        if (gamepad1.yWasPressed() || gamepad2.yWasPressed()) {
-            launcherOn = !launcherOn;
-        }
-        if (gamepad1.b || gamepad2.b) {
-            launcherOn = false;
-        }
+        boolean shooting = gamepad1.right_bumper || gamepad2.right_bumper;
+        if (gamepad1.yWasPressed() || gamepad2.yWasPressed()) setLauncher(!launcherOn);
+        if (gamepad1.b || gamepad2.b) setLauncher(false);
+        if (shooting && !launcherOn) setLauncher(true); // stays on after you let go so the next shot is quick
+        robot.setLauncherPower(launcherOn ? launcherPower : 0);
 
-        if (shooting) {
-            launcherOn = true; // stays spinning after you let go so the next shot is quick
-        }
-        // Distance-based speed when we can see the HIVE, otherwise the old fixed speed.
-        double targetVelocity = aimable ? shot.ticksPerSec : StarterBotHardware.LAUNCHER_TARGET_VELOCITY;
-        robot.setLauncherVelocity(launcherOn ? targetVelocity : 0);
-        boolean readyToFire = aimable
-                ? aimed && robot.launcherAtSpeed(targetVelocity)
-                : robot.launcherReady();
+        boolean spunUp = launcherOn && launcherTimer.seconds() >= StarterBotHardware.LAUNCHER_SPINUP_SEC;
 
         // ---------------- Intake + Feeder ----------------
         double intakePower = Math.max(gamepad1.right_trigger, gamepad2.right_trigger)
@@ -125,7 +102,7 @@ public class StarterBotTeleOp extends OpMode {
         double feederPower = 0;
         if (gamepad1.x || gamepad2.x) {
             feederPower = -1; // unjam
-        } else if (shooting && readyToFire) {
+        } else if (shooting && spunUp) {
             feederPower = 1;
             intakePower += StarterBotHardware.INTAKE_SHOOT_BOOST;
         }
@@ -133,34 +110,26 @@ public class StarterBotTeleOp extends OpMode {
         robot.setIntake(intakePower);
 
         // ---------------- Telemetry ----------------
-        telemetry.addData("Drive", slow ? "SLOW" : "normal");
-        telemetry.addData("Launcher", "%s  vel %.0f / %.0f  %s",
-                launcherOn ? "ON" : "off",
-                robot.launcher.getVelocity(),
-                targetVelocity,
-                readyToFire ? "READY" : "");
-        telemetry.addData("Intake", "%.2f", Math.max(-1, Math.min(1, intakePower)));
+        String missing = robot.missing();
+        if (!missing.isEmpty()) telemetry.addData("MISSING (check config names)", missing);
+        telemetry.addData("Drive", gamepad1.left_bumper ? "SLOW" : "normal");
+        telemetry.addData("Launcher", "%s  %s", launcherOn ? "ON" : "off",
+                shooting ? (spunUp ? "FIRING" : "spinning up...") : (spunUp ? "READY" : ""));
+        telemetry.addData("Launcher power (dpad)", "%.2f", launcherPower);
+        telemetry.addData("Launcher speed", "%.0f RPM (0 = no encoder, that's OK)", robot.launcherRpm());
+        telemetry.addData("Battery", "%.1f V", robot.batteryVoltage());
+        telemetry.addData("Intake", "%.2f", StarterBotHardware.clip(intakePower, -1, 1));
         telemetry.addData("Feeder", "%.2f", feederPower);
-
-        telemetry.addData("HIVE target", vision.targetName());
-        telemetry.addData("Tags seen", vision.seenIds());
-        if (vision.hasTarget()) {
-            telemetry.addData("Distance", "%.1f in  (tag height %.1f in)", vision.distanceIn(), vision.tagHeightIn());
-            telemetry.addData("Heading error", "%.1f deg %s", vision.headingErrorDeg(), aimed ? "AIMED" : "");
-            telemetry.addData("Shot", aimable
-                    ? String.format("exit %.0f in/s  flight %.2f s  entry %.0f deg", shot.exitSpeed, shot.timeOfFlight, shot.entryAngleDeg)
-                    : "OUT OF RANGE - using fixed speed");
-            // If the old fixed-speed shot scores from here, this is the efficiency to use.
-            telemetry.addData("Efficiency if fixed speed scores here", "%.3f",
-                    Ballistics.efficiencyFromGoodShot(vision.distanceIn(), StarterBotHardware.LAUNCHER_TARGET_VELOCITY));
-        }
-        telemetry.addData("Launch efficiency (dpad up/down)", "%.2f", efficiency);
     }
 
     @Override
     public void stop() {
         robot.stopAll();
-        vision.close();
+    }
+
+    private void setLauncher(boolean on) {
+        if (on && !launcherOn) launcherTimer.reset();
+        launcherOn = on;
     }
 
     private static double deadzone(double v) {

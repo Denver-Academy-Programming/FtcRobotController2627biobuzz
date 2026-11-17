@@ -12,6 +12,25 @@ apply plugin: 'com.android.application'
 
 // Custom definitions may go here
 
+// Choose which robot's OpModes go into the app (so the Driver Station only lists that robot's code):
+//   ./gradlew :TeamCode:installDebug -Pbot=starter   -> only StarterBot/
+//   ./gradlew :TeamCode:installDebug -Pbot=full      -> only FullBot/
+//   ./gradlew :TeamCode:installDebug                 -> both (default)
+// Easier: use ./upload.sh starter | full | all from the repo root.
+def bot = (project.findProperty('bot') ?: 'all').toString().toLowerCase()
+def botExcludes = [
+        starter: ['**/teamcode/FullBot/**'],
+        full   : ['**/teamcode/StarterBot/**'],
+        all    : [],
+]
+if (!botExcludes.containsKey(bot)) {
+    throw new GradleException("Unknown -Pbot=${bot}. Use starter, full or all.")
+}
+tasks.withType(JavaCompile).configureEach {
+    inputs.property('bot', bot) // rebuild when switching robots
+    botExcludes[bot].each { exclude it }
+}
+
 // Include common definitions from above.
 apply from: '../build.common.gradle'
 apply from: '../build.dependencies.gradle'
