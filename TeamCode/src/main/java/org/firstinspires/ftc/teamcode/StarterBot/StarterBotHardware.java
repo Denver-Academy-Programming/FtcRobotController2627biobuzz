@@ -49,8 +49,8 @@ public class StarterBotHardware {
     // The launcher runs open-loop (plain power, no encoder needed), corrected for battery voltage so a fresh
     // battery and a tired one shoot the same distance. Power is the fraction of full power at 12 V.
     // Tune live with dpad up/down in TeleOp, then paste the number that scores here.
-    public static final double LAUNCHER_DEFAULT_POWER = 0.10;
-    public static final double LAUNCHER_POWER_STEP = 0.01;
+    public static final double LAUNCHER_DEFAULT_POWER = 0.145;
+    public static final double LAUNCHER_POWER_STEP = 0.005;
     public static final double LAUNCHER_MAX_POWER = 1.0;
     public static final double LAUNCHER_SPINUP_SEC = 1.0;   // wait this long after turning on before feeding
     public static final double NOMINAL_VOLTAGE = 12.0;
