@@ -72,7 +72,7 @@ public class StarterBotHardware {
 
     private HardwareMap hardwareMap;
     private final List<String> missing = new ArrayList<>();
-    private double launcherPower = 0;
+    private double launcherPower = 0.2;
 
     public void init(HardwareMap hardwareMap) {
         this.hardwareMap = hardwareMap;
